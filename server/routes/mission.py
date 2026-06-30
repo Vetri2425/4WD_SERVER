@@ -72,6 +72,7 @@ def _service_context(transport: str = "rest"):
         path_mgr,
         point_mission,
         ros_node,
+        verified_mission,
     )
     from mission_ops import MissionOperationCoordinator
 
@@ -79,6 +80,7 @@ def _service_context(transport: str = "rest"):
     return build_service_context(
         offboard_ctrl=offboard_ctrl,
         point_mission=point_mission,
+        verified_mission=verified_mission,
         ros_node=ros_node,
         hold_owner=hold_owner,
         path_mgr=path_mgr,
@@ -129,21 +131,35 @@ def _merge_point_status() -> dict:
 @router.post("/clear", response_model=MissionClearResponse, dependencies=[Depends(require_token)])
 async def clear_mission():
     """Clear an idle/completed resident mission without deleting artifacts."""
-    from main import hold_owner, offboard_ctrl, point_mission, ros_node
+    from main import hold_owner, offboard_ctrl, point_mission, ros_node, verified_mission
+    from mission_kind_dispatch import active_target_orchestrator, loaded_mission_kind
     from offboard_controller import MissionClearConflict
 
     if offboard_ctrl is None:
         raise HTTPException(503, "Controller not ready")
-    if hold_owner is not None:
-        hold_owner.deactivate(ros_node)
-    if point_mission is not None:
-        await point_mission.clear_mission(
-            ros_node, reason="cleared", offboard_ctrl=offboard_ctrl
-        )
+    orchestrator = active_target_orchestrator(
+        offboard_ctrl=offboard_ctrl,
+        point_mission=point_mission,
+        verified_mission=verified_mission,
+    )
     try:
         status = await offboard_ctrl.clear_mission_async()
     except MissionClearConflict as exc:
         raise HTTPException(409, str(exc))
+    if hold_owner is not None:
+        hold_owner.deactivate(ros_node)
+    if orchestrator is not None and hasattr(orchestrator, "clear_mission"):
+        await orchestrator.clear_mission(
+            ros_node, reason="cleared", offboard_ctrl=offboard_ctrl
+        )
+    elif loaded_mission_kind(offboard_ctrl) == "verified_gps" and verified_mission is not None:
+        await verified_mission.clear_mission(
+            ros_node, reason="cleared", offboard_ctrl=offboard_ctrl
+        )
+    elif point_mission is not None:
+        await point_mission.clear_mission(
+            ros_node, reason="cleared", offboard_ctrl=offboard_ctrl
+        )
     return MissionClearResponse(
         cleared=True,
         status=LoadedPathResponse(**status),

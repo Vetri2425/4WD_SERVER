@@ -76,6 +76,8 @@ bridge_health: Optional["object"] = None
 rtk_manager: Optional["object"] = None
 mission_capture: Optional["object"] = None
 point_mission: Optional["object"] = None
+verified_mission: Optional["object"] = None
+verified_mission_store: Optional["object"] = None
 hold_owner: Optional["object"] = None
 operation_coordinator: Optional["object"] = None
 manual_gateway: Optional["object"] = None
@@ -106,7 +108,8 @@ socket_app = socketio.ASGIApp(sio)
 async def lifespan(app: FastAPI):
     global ros_node, offboard_ctrl, path_mgr, emergency_handler
     global _executor, _beacon, _listener, _telemetry_task, bridge_health, rtk_manager
-    global mission_capture, point_mission, hold_owner, manual_gateway, joystick_ctrl
+    global mission_capture, point_mission, verified_mission, verified_mission_store
+    global hold_owner, manual_gateway, joystick_ctrl
     global spray_startup_reconciliation, operation_coordinator
 
     configure_logging()
@@ -153,6 +156,9 @@ async def lifespan(app: FastAPI):
     from point_events import get_point_event_journal
     from point_mission import PointMissionOrchestrator
     from setpoint_hold import SetpointHoldOwner
+    from verified_mission.adapter import VerifiedMissionOrchestrator
+    from verified_mission.events import get_target_event_journal
+    from verified_mission.store import VerifiedMissionStore
 
     operation_coordinator = MissionOperationCoordinator()
     path_mgr = PathManager(MISSION_DIR)
@@ -165,10 +171,42 @@ async def lifespan(app: FastAPI):
     hold_owner = SetpointHoldOwner()
     point_mission = PointMissionOrchestrator()
     point_mission.set_logger(_record)
+    verified_mission = VerifiedMissionOrchestrator()
+    verified_mission.set_logger(_record)
+    verified_mission_store = VerifiedMissionStore()
+
+    def _verified_is_resident(mission_id: str) -> bool:
+        if offboard_ctrl is None:
+            return False
+        loaded_id = getattr(offboard_ctrl, "loaded_mission_id", None)
+        running_id = getattr(offboard_ctrl, "running_mission_id", None)
+        loaded_kind = getattr(offboard_ctrl, "loaded_mission_kind", "none")
+        if loaded_kind != "verified_gps":
+            return False
+        if mission_id in {loaded_id, running_id}:
+            return True
+        if verified_mission is not None and verified_mission.is_active():
+            if getattr(verified_mission.status, "mission_id", None) == mission_id:
+                return True
+        return False
+
+    verified_mission_store.prune_expired(is_resident=_verified_is_resident)
+
     loop = asyncio.get_running_loop()
     get_point_event_journal().configure_emit(loop, _emit_authenticated)
+    get_target_event_journal().configure_emit(loop, _emit_authenticated)
+
+    def _obstacle_callback(clear: bool) -> None:
+        if offboard_ctrl is None:
+            return
+        kind = getattr(offboard_ctrl, "loaded_mission_kind", "none")
+        if kind == "verified_gps" and verified_mission is not None:
+            verified_mission.set_obstacle_clear(clear)
+        elif point_mission is not None:
+            point_mission.set_obstacle_clear(clear)
+
     if ros_node is not None:
-        ros_node.set_obstacle_callback(point_mission.set_obstacle_clear)
+        ros_node.set_obstacle_callback(_obstacle_callback)
 
     from spray_startup_reconciliation import SprayStartupReconciliation
 
@@ -323,6 +361,7 @@ def create_app() -> FastAPI:
     from routes.auth import router as auth_router
     from routes.vehicle import router as veh_router
     from routes.mission import router as mis_router
+    from routes.verified_mission import router as verified_mission_router
     from routes.path import paths_router, path_router
     from routes.params import router as par_router
     from routes.rpp_params import router as rpp_par_router
@@ -336,6 +375,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router, prefix="/api")
     app.include_router(veh_router, prefix="/api")
     app.include_router(mis_router, prefix="/api")
+    app.include_router(verified_mission_router, prefix="/api")
     app.include_router(paths_router, prefix="/api")  # → /api/paths
     app.include_router(path_router, prefix="/api")  # → /api/path/*
     app.include_router(spray_mode_router, prefix="/api")  # → /api/path/{name}/spray-mode/*

@@ -5,8 +5,9 @@ from __future__ import annotations
 import asyncio
 from typing import Optional
 
-from config import POSE_STALE_MS, SPRAY_DEFAULT_ON
+from config import POSE_STALE_MS, SPRAY_DEFAULT_ON, VERIFIED_MISSION_ID_PREFIX
 from logging_setup import get_logger
+from mission_placement import PlacementError
 from models import MissionState
 from spray_safety import cleanup_mission_start_failure
 
@@ -124,6 +125,147 @@ async def load_path_for_controller(
         return points
 
 
+def _verified_identity_conflict(
+    offboard_ctrl,
+    mission_id: str | None,
+) -> str | None:
+    """Return error message when request id disagrees with resident metadata."""
+    if not mission_id:
+        return None
+    loaded_id = getattr(offboard_ctrl, "loaded_mission_id", None)
+    loaded_kind = getattr(offboard_ctrl, "loaded_mission_kind", "none")
+    looks_verified = mission_id.startswith(VERIFIED_MISSION_ID_PREFIX)
+    if looks_verified and loaded_kind not in {"none", "verified_gps"}:
+        return (
+            f"mission_id {mission_id!r} looks verified but loaded kind is "
+            f"{loaded_kind!r}"
+        )
+    if loaded_kind == "verified_gps" and loaded_id and mission_id != loaded_id:
+        return (
+            f"mission_id {mission_id!r} does not match loaded mission "
+            f"{loaded_id!r}"
+        )
+    if looks_verified and loaded_kind == "verified_gps" and loaded_id != mission_id:
+        return (
+            f"mission_id {mission_id!r} does not match loaded mission "
+            f"{loaded_id!r}"
+        )
+    return None
+
+
+async def start_verified_gps_mission(
+    offboard_ctrl,
+    ros_node,
+    *,
+    mission_id: str | None,
+    capture_coordinator=None,
+    transport: str = "internal",
+    start_request: dict | None = None,
+) -> tuple[bool, str]:
+    """Start a verified GPS mission using resident metadata routing."""
+    from main import hold_owner, verified_mission, verified_mission_store
+    from mission_ops import MissionOperation, MissionOperationCoordinator
+    from target_mission.types import TargetMissionState
+    from verified_mission.loader import ensure_verified_mission_loaded
+
+    if verified_mission is None:
+        raise MissionLoadConflict("verified mission orchestrator not ready")
+    if ros_node is None:
+        raise MissionLoadConflict("ROS node not ready")
+    if not mission_id:
+        mission_id = getattr(offboard_ctrl, "loaded_mission_id", None)
+    if not mission_id:
+        raise MissionLoadConflict("mission_id is required for verified GPS start")
+
+    conflict = _verified_identity_conflict(offboard_ctrl, mission_id)
+    if conflict:
+        raise MissionLoadConflict(conflict)
+
+    ensure_verified_mission_loaded(
+        mission_id,
+        offboard_ctrl=offboard_ctrl,
+        orchestrator=verified_mission,
+        store=verified_mission_store,
+    )
+
+    capture_id = None
+    if capture_coordinator is not None:
+        capture_id = await capture_coordinator.begin_capture(
+            offboard_ctrl,
+            start_request=start_request or {"mission_id": mission_id},
+            transport=transport,
+        )
+
+    needs_cleanup = False
+    try:
+        try:
+            verified_mission.prepare(ros_node.get_state())
+        except PlacementError as exc:
+            raise MissionLoadConflict(str(exc)) from exc
+
+        ok, message = await offboard_ctrl.start_async(
+            expected_mission_id=mission_id,
+        )
+        if ok:
+            started, why = await verified_mission.start(
+                ros_node, offboard_ctrl, hold_owner
+            )
+            if not started:
+                needs_cleanup = True
+                ok, message = False, why
+    except Exception as exc:
+        if capture_coordinator is not None:
+            capture_coordinator.record_start_result(
+                capture_id,
+                success=False,
+                state=offboard_ctrl.state.value,
+                message=str(exc),
+            )
+        raise
+    finally:
+        if needs_cleanup and ros_node is not None:
+            try:
+                from main import operation_coordinator
+
+                coordinator = operation_coordinator or MissionOperationCoordinator()
+                token = await coordinator.begin(MissionOperation.ABORT, timeout_s=0.25)
+                try:
+                    await verified_mission.terminal_cleanup(
+                        ros_node,
+                        hold_owner,
+                        reason="start_failure",
+                        terminal_state=TargetMissionState.FAILED,
+                        operation_token=token,
+                        offboard_ctrl=offboard_ctrl,
+                        require_spray_confirm=True,
+                    )
+                finally:
+                    await coordinator.finish(token)
+                spray_off_result = await cleanup_mission_start_failure(
+                    ros_node, offboard_ctrl
+                )
+                if (
+                    spray_off_result.get("attempted")
+                    and spray_off_result.get("live")
+                    and not spray_off_result.get("success")
+                ):
+                    log.warning(
+                        "verified mission start cleanup: spray OFF not confirmed: %s",
+                        spray_off_result,
+                    )
+            except Exception:
+                log.exception("verified mission start cleanup failed")
+
+    if capture_coordinator is not None:
+        capture_coordinator.record_start_result(
+            capture_id,
+            success=ok,
+            state=offboard_ctrl.state.value,
+            message=message,
+        )
+    return ok, message
+
+
 async def start_mission_for_controller(
     offboard_ctrl,
     path_mgr,
@@ -140,6 +282,41 @@ async def start_mission_for_controller(
     startup_block = _spray_startup_block_reason()
     if startup_block:
         raise MissionLoadConflict(startup_block)
+
+    loaded_kind = getattr(offboard_ctrl, "loaded_mission_kind", "none")
+    if loaded_kind == "verified_gps":
+        return await start_verified_gps_mission(
+            offboard_ctrl,
+            ros_node,
+            mission_id=mission_id,
+            capture_coordinator=capture_coordinator,
+            transport=transport,
+            start_request=start_request,
+        )
+    if mission_id and mission_id.startswith(VERIFIED_MISSION_ID_PREFIX):
+        from verified_mission.loader import ensure_verified_mission_loaded
+        from main import verified_mission, verified_mission_store
+
+        if loaded_kind not in {"none", "verified_gps"}:
+            raise MissionLoadConflict(
+                f"mission_id {mission_id!r} looks verified but loaded kind is "
+                f"{loaded_kind!r}"
+            )
+        ensure_verified_mission_loaded(
+            mission_id,
+            offboard_ctrl=offboard_ctrl,
+            orchestrator=verified_mission,
+            store=verified_mission_store,
+        )
+        return await start_verified_gps_mission(
+            offboard_ctrl,
+            ros_node,
+            mission_id=mission_id,
+            capture_coordinator=capture_coordinator,
+            transport=transport,
+            start_request=start_request,
+        )
+
     if offboard_ctrl.has_protected_mission and name:
         raise MissionLoadConflict(
             f"Loaded mission {offboard_ctrl.loaded_mission_id!r} is staged/surveyed; "
@@ -192,7 +369,10 @@ async def start_mission_for_controller(
 
     needs_point_cleanup = False
     try:
-        if offboard_ctrl.spray_mode == "point":
+        if (
+            offboard_ctrl.spray_mode == "point"
+            and loaded_kind != "verified_gps"
+        ):
             from main import point_mission
 
             if point_mission is None:
@@ -205,7 +385,11 @@ async def start_mission_for_controller(
             expected_mission_id=mission_id,
             pre_publish_hook=_placement_hook if capture_id else None,
         )
-        if ok and offboard_ctrl.spray_mode == "point":
+        if (
+            ok
+            and offboard_ctrl.spray_mode == "point"
+            and loaded_kind != "verified_gps"
+        ):
             from main import hold_owner
 
             try:

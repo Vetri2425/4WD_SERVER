@@ -112,6 +112,16 @@ RMSE_MAX = float(os.environ.get("ROVER_ALIGN_RMSE_MAX", "0.05"))
 SCALE_FIT_TOLERANCE = float(os.environ.get("ROVER_ALIGN_SCALE_TOL", "0.25"))
 # Staged-mission lifetime (seconds). Older staging files are pruned on each plan.
 STAGING_TTL_S = float(os.environ.get("ROVER_STAGING_TTL_S", "3600"))
+
+# ── Verified GPS missions (4WD point-nav) ─────────────────────────────────────
+VERIFIED_MISSION_DIR = os.path.join(MISSION_DIR, "verified")
+VERIFIED_MISSION_TTL_S = float(os.environ.get("ROVER_VERIFIED_MISSION_TTL_S", "86400"))
+VERIFIED_MISSION_ID_PREFIX = os.environ.get("ROVER_VERIFIED_MISSION_ID_PREFIX", "vwm_")
+DUPLICATE_TOLERANCE_M = float(os.environ.get("ROVER_DUPLICATE_TOLERANCE_M", "1e-3"))
+_min_sep_env = os.environ.get("ROVER_VERIFIED_MISSION_MIN_SEP_M", "").strip()
+VERIFIED_MISSION_MIN_SEP_M: float | None = (
+    float(_min_sep_env) if _min_sep_env else None
+)
 # Litres of marking material consumed per metre of MARK path (site-tunable).
 SPRAY_LITERS_PER_METER = float(os.environ.get("ROVER_SPRAY_L_PER_M", "0.012"))
 # Default MARK flags for built-in / legacy non-DXF paths that carry no spray metadata.

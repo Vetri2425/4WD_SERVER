@@ -112,6 +112,7 @@ SOCKET_SERVER_EVENTS = {
     "params_result": "Parameter values from request_params.",
     "point_continue_result": "Manual point continue result.",
     "point_mission_event": "Bounded point mission event journal append.",
+    "target_event": "Verified GPS original-target lifecycle event (terminal via mission_outcome).",
     "point_skip_result": "Point skip result.",
     "rover_disconnected": "FCU/MAVROS disconnected transition.",
     "safety_abort": "Telemetry watchdog safety abort notification.",

@@ -280,6 +280,7 @@ def register_handlers(sio) -> None:
             path_mgr,
             point_mission,
             ros_node,
+            verified_mission,
         )
         from mission_ops import MissionOperationCoordinator
         from mission_services import build_service_context
@@ -288,6 +289,7 @@ def register_handlers(sio) -> None:
         return build_service_context(
             offboard_ctrl=offboard_ctrl,
             point_mission=point_mission,
+            verified_mission=verified_mission,
             ros_node=ros_node,
             hold_owner=hold_owner,
             path_mgr=path_mgr,

@@ -23,6 +23,7 @@ from models import (
     PointSkipRequest,
     PointSkipResponse,
 )
+from mission_kind_dispatch import active_target_orchestrator, loaded_mission_kind
 from point_mission import PointMissionState
 
 
@@ -38,6 +39,7 @@ class MissionServiceError(Exception):
 class MissionServiceContext:
     offboard_ctrl: Any
     point_mission: Any
+    verified_mission: Any
     ros_node: Any
     hold_owner: Any
     path_mgr: Any
@@ -46,10 +48,19 @@ class MissionServiceContext:
     operation_coordinator: MissionOperationCoordinator
 
 
+def _target_orchestrator(ctx: MissionServiceContext) -> Any | None:
+    return active_target_orchestrator(
+        offboard_ctrl=ctx.offboard_ctrl,
+        point_mission=ctx.point_mission,
+        verified_mission=ctx.verified_mission,
+    )
+
+
 def _merge_point_status(ctx: MissionServiceContext) -> dict[str, Any]:
-    if ctx.point_mission is None:
+    orchestrator = _target_orchestrator(ctx)
+    if orchestrator is None:
         return {}
-    payload = ctx.point_mission.status.as_dict()
+    payload = orchestrator.status.as_dict()
     if ctx.hold_owner is not None:
         hold = ctx.hold_owner.as_dict(ctx.ros_node)
         payload.update(
@@ -75,7 +86,7 @@ def _require_point_mode(offboard_ctrl) -> None:
 
 
 def _require_point_orchestrator(ctx: MissionServiceContext) -> None:
-    if ctx.point_mission is None:
+    if _target_orchestrator(ctx) is None:
         raise MissionServiceError(503, "Point mission orchestrator unavailable", "unavailable")
     if ctx.offboard_ctrl is None:
         raise MissionServiceError(503, "Controller not ready", "unavailable")
@@ -95,7 +106,7 @@ async def pause_point_service(ctx: MissionServiceContext) -> PointPauseResponse:
     _require_point_mode(ctx.offboard_ctrl)
     token = await _begin_or_conflict(ctx.operation_coordinator, MissionOperation.PAUSE, 0.5)
     try:
-        ok, message, status_code = await ctx.point_mission.pause_mission(
+        ok, message, status_code = await _target_orchestrator(ctx).pause_mission(
             ctx.ros_node, ctx.hold_owner
         )
         if not ok:
@@ -119,7 +130,7 @@ async def resume_point_service(
         except ControlArbiterError as exc:
             raise MissionServiceError(409, exc.message, "motion_not_allowed") from exc
         expected_generation = req.expected_generation if req else None
-        ok, message, status_code = await ctx.point_mission.resume_mission(
+        ok, message, status_code = await _target_orchestrator(ctx).resume_mission(
             ctx.ros_node,
             ctx.hold_owner,
             expected_generation=expected_generation,
@@ -144,7 +155,7 @@ async def continue_point_service(ctx: MissionServiceContext) -> PointContinueRes
             await get_control_arbiter().ensure_mission_motion_allowed(ctx.offboard_ctrl)
         except ControlArbiterError as exc:
             raise MissionServiceError(409, exc.message, "motion_not_allowed") from exc
-        ok, message, status_code = await ctx.point_mission.continue_point(ctx.ros_node)
+        ok, message, status_code = await _target_orchestrator(ctx).continue_point(ctx.ros_node)
         if not ok:
             raise MissionServiceError(status_code, message, "continue_rejected")
         return PointContinueResponse(
@@ -158,7 +169,7 @@ async def set_point_obstacle_service(
     ctx: MissionServiceContext, req: ObstacleStatusRequest
 ) -> ObstacleStatusResponse:
     _require_point_orchestrator(ctx)
-    ctx.point_mission.set_obstacle_clear(req.clear)
+    _target_orchestrator(ctx).set_obstacle_clear(req.clear)
     return ObstacleStatusResponse(obstacle_clear=req.clear, status=_point_status(ctx))
 
 
@@ -173,7 +184,7 @@ async def skip_point_service(
             await get_control_arbiter().ensure_mission_motion_allowed(ctx.offboard_ctrl)
         except ControlArbiterError as exc:
             raise MissionServiceError(409, exc.message, "motion_not_allowed") from exc
-        ok, message, status_code = await ctx.point_mission.skip_point(
+        ok, message, status_code = await _target_orchestrator(ctx).skip_point(
             ctx.ros_node,
             ctx.hold_owner,
             point_index=req.point_index,
@@ -209,19 +220,20 @@ async def abort_mission_service(ctx: MissionServiceContext) -> dict[str, Any]:
     try:
         if ctx.hold_owner is not None:
             ctx.hold_owner.deactivate(ctx.ros_node)
+        orchestrator = _target_orchestrator(ctx)
         if (
-            ctx.point_mission is not None
+            orchestrator is not None
             and ctx.offboard_ctrl.spray_mode == "point"
             and (
-                ctx.point_mission.is_active()
-                or ctx.point_mission.is_paused()
-                or ctx.point_mission.status.state not in {
+                orchestrator.is_active()
+                or orchestrator.is_paused()
+                or orchestrator.status.state not in {
                     PointMissionState.IDLE,
                     PointMissionState.COMPLETED,
                 }
             )
         ):
-            await ctx.point_mission.terminal_cleanup(
+            await orchestrator.terminal_cleanup(
                 ctx.ros_node,
                 ctx.hold_owner,
                 reason="operator_abort",
@@ -248,7 +260,7 @@ async def stop_mission_service(ctx: MissionServiceContext) -> dict[str, Any]:
         raise MissionServiceError(503, "Controller not ready", "unavailable")
     return await stop_active_mission(
         ctx.offboard_ctrl,
-        ctx.point_mission,
+        _target_orchestrator(ctx),
         ctx.ros_node,
         ctx.hold_owner,
         mission_capture=ctx.mission_capture,
@@ -283,10 +295,11 @@ async def restart_mission_service(
                 "active_without_stop_first",
             )
         if active:
-            if ctx.point_mission is not None and (
-                ctx.point_mission.is_active() or ctx.point_mission.is_paused()
+            orchestrator = _target_orchestrator(ctx)
+            if orchestrator is not None and (
+                orchestrator.is_active() or orchestrator.is_paused()
             ):
-                await ctx.point_mission.terminal_cleanup(
+                await orchestrator.terminal_cleanup(
                     ctx.ros_node,
                     ctx.hold_owner,
                     reason="restart_stop_first",
@@ -321,9 +334,12 @@ async def restart_mission_service(
                 )
         point_generation: int | None = None
         if ctx.offboard_ctrl.spray_mode == "point":
-            if ctx.point_mission is None:
+            orchestrator = _target_orchestrator(ctx)
+            if orchestrator is None:
                 raise MissionServiceError(503, "Point mission orchestrator unavailable")
-            point_generation = ctx.point_mission.reset_for_restart(req.mission_id)
+            if not hasattr(orchestrator, "reset_for_restart"):
+                raise MissionServiceError(503, "Target orchestrator cannot restart", "unavailable")
+            point_generation = orchestrator.reset_for_restart(req.mission_id)
         else:
             ctx.offboard_ctrl.reset_progress_for_restart(req.mission_id)
         if req.start_after_reset:
@@ -364,6 +380,7 @@ def build_service_context(
     *,
     offboard_ctrl,
     point_mission,
+    verified_mission=None,
     ros_node,
     hold_owner,
     path_mgr,
@@ -374,6 +391,7 @@ def build_service_context(
     return MissionServiceContext(
         offboard_ctrl=offboard_ctrl,
         point_mission=point_mission,
+        verified_mission=verified_mission,
         ros_node=ros_node,
         hold_owner=hold_owner,
         path_mgr=path_mgr,

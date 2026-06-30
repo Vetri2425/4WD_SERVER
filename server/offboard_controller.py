@@ -17,7 +17,9 @@ import datetime
 import inspect
 import math
 from collections import deque
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Literal, Optional
+
+MissionKind = Literal["none", "path", "point_staged", "verified_gps", "legacy"]
 
 from config import (
     MISSION_COMPLETE_DISARM,
@@ -120,6 +122,8 @@ class OffboardController:
         self._origin_gps: tuple[float, float] | None = None
         self._is_staged_mission = False
         self._spray_mode = "continuous"
+        self._mission_kind: MissionKind = "none"
+        self._verified_metadata: dict[str, Any] | None = None
         self._path_fingerprint = ""
         self._configuration_revision = 0
         self._dash_feasibility: dict[str, Any] | None = None
@@ -171,6 +175,14 @@ class OffboardController:
     @property
     def spray_mode(self) -> str:
         return self._spray_mode
+
+    @property
+    def loaded_mission_kind(self) -> MissionKind:
+        return self._mission_kind
+
+    @property
+    def verified_metadata(self) -> dict[str, Any] | None:
+        return self._verified_metadata
 
     @property
     def uses_global_rpp_completion(self) -> bool:
@@ -300,6 +312,8 @@ class OffboardController:
         is_staged: bool = False,
         allow_replace_protected: bool = False,
         spray_mode: str = "continuous",
+        mission_kind: MissionKind = "legacy",
+        metadata: dict[str, Any] | None = None,
         path_fingerprint: str = "",
         configuration_revision: int = 0,
         dash_feasibility: dict[str, Any] | None = None,
@@ -349,6 +363,20 @@ class OffboardController:
         self._placement_mode = placement_mode
         self._is_staged_mission = bool(is_staged)
         self._spray_mode = str(spray_mode or "continuous")
+        if mission_kind == "verified_gps":
+            self._mission_kind = "verified_gps"
+            self._verified_metadata = dict(metadata) if metadata else None
+            self._placement_mode = GPS_SURVEYED
+            self._is_staged_mission = True
+        elif is_staged:
+            self._mission_kind = "point_staged"
+            self._verified_metadata = None
+        elif placement_mode == GPS_SURVEYED:
+            self._mission_kind = "path"
+            self._verified_metadata = None
+        else:
+            self._mission_kind = "legacy" if mission_kind == "legacy" else mission_kind
+            self._verified_metadata = None
         self._path_fingerprint = verified_fingerprint
         self._configuration_revision = int(configuration_revision or 0)
         self._dash_feasibility = dict(dash_feasibility) if dash_feasibility else None
@@ -395,6 +423,8 @@ class OffboardController:
             self._origin_gps = None
             self._is_staged_mission = False
             self._spray_mode = "continuous"
+            self._mission_kind = "none"
+            self._verified_metadata = None
             self._path_fingerprint = ""
             self._configuration_revision = 0
             self._dash_feasibility = None

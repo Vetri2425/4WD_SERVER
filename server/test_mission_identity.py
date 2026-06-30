@@ -156,6 +156,30 @@ async def test_mission_id_mismatch_returns_409_without_side_effects(monkeypatch)
 
 
 @pytest.mark.anyio
+async def test_verified_prefix_start_cannot_replace_legacy_resident(monkeypatch):
+    node = FakeNode()
+    ctrl = OffboardController(node, deque())
+    ctrl.load_path(
+        [(0.0, 0.0), (1.0, 0.0)],
+        name="local.csv",
+        mission_id="local.csv",
+        spray_flags=[False, False],
+    )
+    monkeypatch.setattr(main, "offboard_ctrl", ctrl)
+    monkeypatch.setattr(main, "path_mgr", FakePathManager())
+    monkeypatch.setattr(main, "ros_node", node)
+
+    with pytest.raises(HTTPException) as exc:
+        await start_mission(MissionStartRequest(mission_id="vwm_other"))
+
+    assert exc.value.status_code == 409
+    assert node.calls == []
+    assert ctrl.loaded_mission_id == "local.csv"
+    assert ctrl.loaded_mission_kind == "legacy"
+    assert ctrl.running_mission_id is None
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize(
     "override",
     [

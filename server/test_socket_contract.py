@@ -85,7 +85,12 @@ def test_socket_contract_covers_current_server_emit_literals():
                 if isinstance(first, ast.Constant) and isinstance(first.value, str):
                     emitted.add(first.value)
     emitted.update(
-        {"mission_completed", "mission_completion_degraded", "point_mission_event"}
+        {
+            "mission_completed",
+            "mission_completion_degraded",
+            "point_mission_event",
+            "target_event",
+        }
     )
 
     assert emitted <= set(SOCKET_SERVER_EVENTS)

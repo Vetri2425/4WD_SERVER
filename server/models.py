@@ -580,6 +580,87 @@ class PointEventHistoryResponse(BaseModel):
     oldest_available_event_id: Optional[int] = None
 
 
+# ── Verified GPS mission models ───────────────────────────────────────────────
+
+
+class VerifiedWaypointInput(BaseModel):
+    index: int = Field(..., ge=0)
+    lat: float
+    lon: float
+    alt: float = 0.0
+    mark: bool
+    dwell_s: Optional[float] = None
+    block: Optional[str] = None
+    row: Optional[str] = None
+    pile: Optional[str] = None
+    label: Optional[str] = None
+
+    @field_validator("lat", "lon", "alt", "dwell_s")
+    @classmethod
+    def finite_coord(cls, value: Optional[float]) -> Optional[float]:
+        if value is None:
+            return value
+        import math
+
+        if not math.isfinite(value):
+            raise ValueError("coordinate must be finite")
+        return value
+
+
+class UploadVerifiedMissionRequest(BaseModel):
+    mission_name: str
+    waypoints: list[VerifiedWaypointInput]
+    settings: Optional[dict[str, Any]] = None
+
+
+class UploadVerifiedMissionResponse(BaseModel):
+    success: bool
+    mission_id: str
+    total_targets: int
+    mission_name: Optional[str] = None
+    message: Optional[str] = None
+
+
+class GetVerifiedMissionResponse(BaseModel):
+    mission_id: str
+    mission_name: str
+    total_targets: int
+    waypoints: Optional[list[dict[str, Any]]] = None
+    created_at: Optional[str] = None
+    state: Literal["stored", "loaded", "running", "completed", "failed"]
+
+
+class VerifiedTargetEvent(BaseModel):
+    event_id: int = 0
+    target_index: int
+    mission_id: str
+    event_type: Literal[
+        "target_active",
+        "target_arrived",
+        "target_settling",
+        "target_marking",
+        "target_completed",
+        "target_failed",
+        "target_skipped",
+        "target_stopped",
+        "target_aborted",
+    ]
+    timestamp: str
+    terminal: bool = False
+    mission_outcome: Optional[Literal["completed", "failed", "stopped", "aborted"]] = None
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    reason: Optional[str] = None
+    message: Optional[str] = None
+
+
+class VerifiedTargetEventHistoryResponse(BaseModel):
+    events: list[VerifiedTargetEvent]
+    latest_event_id: int
+    history_evicted: bool
+    oldest_available_event_id: Optional[int] = None
+
+
 class PointTerminalCleanupResult(BaseModel):
     success: bool
     idempotent: bool
