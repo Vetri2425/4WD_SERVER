@@ -4,7 +4,10 @@ Read-only; not auth-protected so dashboards / health checks can poll cheaply.
 """
 from __future__ import annotations
 
+import math
+
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 
 from auth import require_token
 from config import GPS_FIX_NAMES, RPP_STATE_NAMES
@@ -14,11 +17,19 @@ from spray_safety import build_spray_telemetry_fields
 router = APIRouter(prefix="/telemetry", tags=["telemetry"], dependencies=[Depends(require_token)])
 
 
+def _sanitize(obj):
+    if isinstance(obj, dict):
+        return {k: _sanitize(v) for k, v in obj.items()}
+    if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+        return None
+    return obj
+
+
 @router.get("/latest", response_model=TelemetryData)
 async def telemetry_latest():
     from main import offboard_ctrl, ros_node
     if ros_node is None:
-        return TelemetryData()
+        return JSONResponse(_sanitize(TelemetryData().model_dump()))
     s = ros_node.get_state()
     code = s.get("rpp_state", 0)
     legacy_spraying = bool(s.get("spraying", False))
@@ -48,7 +59,7 @@ async def telemetry_latest():
         mission_running=mission_running,
         mission_dash=mission_dash,
     )
-    return TelemetryData(
+    data = TelemetryData(
         pos_n           = s.get("pos_n"),
         pos_e           = s.get("pos_e"),
         heading_ned_deg = s.get("heading_ned_deg"),
@@ -79,3 +90,4 @@ async def telemetry_latest():
         alt             = s.get("alt"),
         **spray_fields,
     )
+    return JSONResponse(_sanitize(data.model_dump()))
