@@ -10,9 +10,9 @@ Upholds=rpp-pipeline.service rover-server.service
 Type=exec
 User=flash
 Group=flash
-WorkingDirectory=/home/flash/PX4_DXP
+WorkingDirectory=/home/flash/4WD_SERVER
 ExecStartPre=/bin/sh -c 'rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_* 2>/dev/null || true'
-ExecStart=/home/flash/PX4_DXP/px4_start_service.sh
+ExecStart=/home/flash/4WD_SERVER/px4_start_service.sh
 ExecStop=/bin/kill -TERM $MAINPID
 Restart=always
 RestartSec=10
@@ -23,7 +23,7 @@ StartLimitBurst=10
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/flash/.ros /home/flash/PX4_DXP /tmp /var/tmp
+ReadWritePaths=/home/flash/.ros /home/flash/4WD_SERVER /tmp /var/tmp
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
@@ -55,7 +55,7 @@ ProtectClock=no
 # Environment
 Environment=ROS_DOMAIN_ID=0
 Environment=ROS_LOCALHOST_ONLY=0
-Environment=FASTRTPS_DEFAULT_PROFILES_FILE=/home/flash/PX4_DXP/config/fastdds_no_shm.xml
+Environment=FASTRTPS_DEFAULT_PROFILES_FILE=/home/flash/4WD_SERVER/config/fastdds_no_shm.xml
 UnsetEnvironment=AMENT_TRACE_SETUP_FILES
 Environment=HOME=/home/flash
 

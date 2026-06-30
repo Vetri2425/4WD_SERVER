@@ -10,9 +10,9 @@ PartOf=px4-dxp.service
 Type=exec
 User=flash
 Group=flash
-WorkingDirectory=/home/flash/PX4_DXP
-ExecStartPre=/bin/bash -lc 'source /opt/ros/humble/setup.bash && timeout 35 python3 /home/flash/PX4_DXP/tools/ros2_mavros_health.py --timeout 30 node /mavros'
-ExecStart=/home/flash/PX4_DXP/rpp_start.sh
+WorkingDirectory=/home/flash/4WD_SERVER
+ExecStartPre=/bin/bash -lc 'source /opt/ros/humble/setup.bash && timeout 35 python3 /home/flash/4WD_SERVER/tools/ros2_mavros_health.py --timeout 30 node /mavros'
+ExecStart=/home/flash/4WD_SERVER/rpp_start.sh
 Restart=on-failure
 RestartSec=5
 StartLimitInterval=300
@@ -22,7 +22,7 @@ StartLimitBurst=10
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/flash/.ros /home/flash/PX4_DXP /tmp /var/tmp
+ReadWritePaths=/home/flash/.ros /home/flash/4WD_SERVER /tmp /var/tmp
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
@@ -45,7 +45,7 @@ CPUAffinity=4
 # Environment
 Environment=ROS_DOMAIN_ID=0
 Environment=ROS_LOCALHOST_ONLY=0
-Environment=FASTRTPS_DEFAULT_PROFILES_FILE=/home/flash/PX4_DXP/config/fastdds_no_shm.xml
+Environment=FASTRTPS_DEFAULT_PROFILES_FILE=/home/flash/4WD_SERVER/config/fastdds_no_shm.xml
 Environment=HOME=/home/flash
 
 # Output

@@ -9,8 +9,8 @@ PartOf=px4-dxp.service
 Type=exec
 User=flash
 Group=flash
-WorkingDirectory=/home/flash/PX4_DXP
-ExecStart=/home/flash/PX4_DXP/tools/bag_autorecord.sh
+WorkingDirectory=/home/flash/4WD_SERVER
+ExecStart=/home/flash/4WD_SERVER/tools/bag_autorecord.sh
 Restart=on-failure
 RestartSec=5
 StartLimitInterval=300
@@ -20,7 +20,7 @@ StartLimitBurst=10
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/flash/.ros /home/flash/bags_jet /home/flash/PX4_DXP /tmp /var/tmp
+ReadWritePaths=/home/flash/.ros /home/flash/bags_jet /home/flash/4WD_SERVER /tmp /var/tmp
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
@@ -33,13 +33,13 @@ CPUQuota=100%
 # Environment
 Environment=ROS_DOMAIN_ID=0
 Environment=ROS_LOCALHOST_ONLY=0
-Environment=FASTRTPS_DEFAULT_PROFILES_FILE=/home/flash/PX4_DXP/config/fastdds_no_shm.xml
+Environment=FASTRTPS_DEFAULT_PROFILES_FILE=/home/flash/4WD_SERVER/config/fastdds_no_shm.xml
 Environment=HOME=/home/flash
 Environment=BAGS_DIR=/home/flash/bags_jet
-Environment=PX4_DXP_DIR=/home/flash/PX4_DXP
-Environment=MISSION_DEBUG_CONTROL_DIR=/home/flash/PX4_DXP/runtime/mission-debug
-Environment=BAG_QOS_OVERRIDES=/home/flash/PX4_DXP/config/rosbag_qos_overrides.yaml
-Environment=ROVER_MACHINE_TOKEN_FILE=/home/flash/PX4_DXP/config/bag_autorecord.token
+Environment=PX4_DXP_DIR=/home/flash/4WD_SERVER
+Environment=MISSION_DEBUG_CONTROL_DIR=/home/flash/4WD_SERVER/runtime/mission-debug
+Environment=BAG_QOS_OVERRIDES=/home/flash/4WD_SERVER/config/rosbag_qos_overrides.yaml
+Environment=ROVER_MACHINE_TOKEN_FILE=/home/flash/4WD_SERVER/config/bag_autorecord.token
 Environment=BAG_POST_TAIL_S=2.0
 # Storage limits are site-configurable via a systemd drop-in.
 Environment=BAG_MIN_FREE_BYTES=5368709120

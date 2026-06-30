@@ -9,12 +9,12 @@ Wants=rpp-pipeline.service
 Type=simple
 User=flash
 Group=flash
-WorkingDirectory=/home/flash/PX4_DXP/server
+WorkingDirectory=/home/flash/4WD_SERVER/server
 # NOTE: rover-server is intentionally NOT gated on /mavros discovery. It is the
 # operator's UI/telemetry surface and must come up even when MAVROS is down so
 # /api/mission/status can report fcu_connected:False (graceful degradation).
 # Upholds= (from px4-dxp) + Restart= reconnect once MAVROS returns.
-ExecStart=/home/flash/PX4_DXP/server/run.sh
+ExecStart=/home/flash/4WD_SERVER/server/run.sh
 Restart=on-failure
 RestartSec=5
 StartLimitInterval=300
@@ -25,7 +25,7 @@ StartLimitBurst=10
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/flash/.ros /home/flash/PX4_DXP /tmp /var/tmp
+ReadWritePaths=/home/flash/.ros /home/flash/4WD_SERVER /tmp /var/tmp
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
@@ -40,13 +40,13 @@ CPUQuota=200%
 # Environment
 Environment=ROS_DOMAIN_ID=0
 Environment=ROS_LOCALHOST_ONLY=0
-Environment=FASTRTPS_DEFAULT_PROFILES_FILE=/home/flash/PX4_DXP/config/fastdds_no_shm.xml
+Environment=FASTRTPS_DEFAULT_PROFILES_FILE=/home/flash/4WD_SERVER/config/fastdds_no_shm.xml
 Environment=HOME=/home/flash
 Environment=FASTAPI_PORT=5001
-Environment=ROVER_PASSWORD_FILE=/home/flash/PX4_DXP/config/rover_password.json
-Environment=ROVER_MACHINE_TOKENS_FILE=/home/flash/PX4_DXP/config/rover_machine_tokens.json
+Environment=ROVER_PASSWORD_FILE=/home/flash/4WD_SERVER/config/rover_password.json
+Environment=ROVER_MACHINE_TOKENS_FILE=/home/flash/4WD_SERVER/config/rover_machine_tokens.json
 Environment=MISSION_CAPTURE_REQUIRED=1
-Environment=MISSION_DEBUG_CONTROL_DIR=/home/flash/PX4_DXP/runtime/mission-debug
+Environment=MISSION_DEBUG_CONTROL_DIR=/home/flash/4WD_SERVER/runtime/mission-debug
 Environment=MISSION_CAPTURE_ACK_TIMEOUT_S=3.0
 Environment=ROVER_JOYSTICK_MAX_ABS_THROTTLE=0.35
 Environment=ROVER_JOYSTICK_MAX_ABS_STEERING=0.20
