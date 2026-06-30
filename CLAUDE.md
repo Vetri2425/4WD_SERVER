@@ -1,6 +1,6 @@
-# 3WD Marking Rover — Jetson Companion
+# 4WD Marking Rover — Jetson Companion
 
-Scope: runtime, ROS2, MAVROS2, on-device debugging on Jetson Orin `192.168.1.102`.
+Scope: runtime, ROS2, MAVROS2, on-device debugging on Jetson Orin `192.168.1.101`.
 Not your job: PX4 firmware, waypoint gen, log analysis — those live on Mac GCS at `/Users/dyx_a1/Vetri/3WD_GCS_transfer/3WD_GCS/`.
 
 > **Cross-project memory:** `/Users/dyx_a1/Vetri/PX4-Autopilot/.claude/memory/integration.md`
@@ -10,7 +10,7 @@ Not your job: PX4 firmware, waypoint gen, log analysis — those live on Mac GCS
 
 | Item | Value |
 |---|---|
-| IP | `192.168.1.102` (eno1), user `flash` |
+| IP | `192.168.1.101` (eno1), user `flash` |
 | OS | Ubuntu aarch64, ROS2 Humble |
 | FCU | `/dev/ttyACM0` @ 921600 (CubeOrangePlus, PX4 v1.16.2) |
 | RTK | UM982 on TELEM1 — NTRIP via MAVROS |
@@ -47,13 +47,16 @@ Not your job: PX4 firmware, waypoint gen, log analysis — those live on Mac GCS
 | Item | Value |
 |---|---|
 | Host | MacBook Air, user `dyx_a1` |
+| GCS frontend | DYX_GCS_V |
 | GCS path | `/Users/dyx_a1/Vetri/3WD_GCS_transfer/3WD_GCS/` |
-| SSH to Jetson | `ssh flash@192.168.1.102` |
-| QGC | QGroundControl on macOS |
+| SSH to Jetson | `ssh flash@192.168.1.101` |
+| QGC | QGroundControl on macOS — UDP `192.168.1.101:14550` |
 
-## Current status (2026-06-17)
+## Current status (2026-06-30)
 
-- Phase 2 OFFBOARD stack running; FastAPI + mobile frontend built
+- 4WD_SERVER repo created and deployed on new Jetson (`192.168.1.101`)
+- QGC connected via UDP:14550 — FCU link confirmed
+- Phase 2 OFFBOARD stack running; FastAPI + DYX_GCS_V mobile frontend built
 - **Controller + tuning phase CLOSED & VALIDATED** — frozen at validated config (`@510be9b`+ bug fixes). Production tracking = **segment / stop-pivot profile**. Do not re-open arc PID/lookahead tuning unless a regression appears.
 - **All 3 priority bugs FIXED + VALIDATED (2026-06-15)** via 11-bag campaign + `tools/validate_build.py`:
   - **BUG-T3** wrong-initial-turn — `fix(rpp): forward-cone clamp` (`510be9b`). PASS on all 11 incl. ~90° mis-headed starts (correct turn, no reverse).
@@ -81,7 +84,7 @@ Not your job: PX4 firmware, waypoint gen, log analysis — those live on Mac GCS
   - **Bench test command (armed, no OFFBOARD needed):** `MAV_CMD_DO_SET_ACTUATOR` cmd 187 is accepted while armed in any mode. cmd 183 requires OFFBOARD.
 - robot_localization fusion: not yet built
 
-### Active focus (Phase 3 — moved on from controller)
+### Active focus (4WD — Phase 3)
 1. **Path engine + trajectory planning** — mission/path generation, segment splitting, corner handling
 2. **CRS / coordinate handling** — coordinate reference system + geodesic conversion for path import
 3. **Spray control logic** — validate flag conditioning, timing, safety gates end-to-end
@@ -92,7 +95,7 @@ Not your job: PX4 firmware, waypoint gen, log analysis — those live on Mac GCS
 - Do not edit PX4 firmware on Jetson
 - Do not stop `px4-dxp.service` without warning — carries QGC bridge
 - Do not disable RTK (`ntrip_rtcm_node.py`)
-- Do not push FCU params from Jetson — QGC on Mac is source of truth
+- Do not push FCU params from Jetson — QGC (DYX_GCS_V) on Mac is source of truth
 - ArduRover is abandoned — do not propose ArduRover solutions
 
 ## Quick reference
@@ -104,8 +107,8 @@ journalctl -u px4-dxp.service -f
 ros2 bag record /mavros/local_position/pose /mavros/setpoint_raw/local /mavros/state -o ~/bags/$(date +%Y%m%d_%H%M%S)
 ```
 
-- NTRIP creds: `~/PX4_DXP/config/ntrip.env` (gitignored)
-- MAVROS pluginlist: `~/PX4_DXP/px4_pluginlists_rover.yaml`
+- NTRIP creds: `~/4WD_SERVER/config/ntrip.env` (gitignored)
+- MAVROS pluginlist: `~/4WD_SERVER/px4_pluginlists_rover.yaml`
 - FastAPI: port 5001 — `curl http://localhost:5001/api/ping`
 - QGC UDP: 14550 | ROS_DOMAIN_ID: 0
 
@@ -115,16 +118,16 @@ Use `tools/capture_telemetry.py` to inspect live WebSocket telemetry — prefer 
 
 ```bash
 # From Mac — single snapshot
-ssh flash@192.168.1.102 'cd ~/PX4_DXP && python3 tools/capture_telemetry.py -n 1 --host localhost'
+ssh flash@192.168.1.101 'cd ~/4WD_SERVER && python3 tools/capture_telemetry.py -n 1 --host localhost'
 
 # From Mac — 5 samples (one per 100ms tick at 10 Hz)
-ssh flash@192.168.1.102 'cd ~/PX4_DXP && python3 tools/capture_telemetry.py -n 5 --host localhost'
+ssh flash@192.168.1.101 'cd ~/4WD_SERVER && python3 tools/capture_telemetry.py -n 5 --host localhost'
 
 # From Mac — continuous stream until Ctrl-C
-ssh flash@192.168.1.102 'cd ~/PX4_DXP && python3 tools/capture_telemetry.py -n 0 --host localhost'
+ssh flash@192.168.1.101 'cd ~/4WD_SERVER && python3 tools/capture_telemetry.py -n 0 --host localhost'
 
 # Filter a specific field (e.g. GPS accuracy)
-ssh flash@192.168.1.102 'cd ~/PX4_DXP && python3 tools/capture_telemetry.py -n 5 --host localhost 2>/dev/null' \
+ssh flash@192.168.1.101 'cd ~/4WD_SERVER && python3 tools/capture_telemetry.py -n 5 --host localhost 2>/dev/null' \
   | python3 -c "import sys,json; [print(json.loads(l)['gps_fix_name'], json.loads(l)['hrms'], json.loads(l)['vrms']) for l in sys.stdin]"
 ```
 
