@@ -962,14 +962,18 @@ class PointMissionOrchestrator:
         dwell_remaining_s: float | None = None,
     ) -> PointMissionEvent:
         status = self._status
+        ts = utc_ts()
+        resolved_index = point_index if point_index is not None else status.current_point_index
         return PointMissionEvent(
             event_id=0,
-            ts=utc_ts(),
+            ts=ts,
+            timestamp=ts,
             event_type=event_type,  # type: ignore[arg-type]
             mission_id=status.mission_id,
             parent_mission_id=status.parent_mission_id or status.mission_id,
             point_mission_generation=status.generation,
-            point_index=point_index if point_index is not None else status.current_point_index,
+            generation=status.generation,
+            point_index=resolved_index,
             source_index=source_index,
             point_mission_state=status.state.value,
             mark=mark if mark is not None else status.mark_enabled,
@@ -984,6 +988,7 @@ class PointMissionOrchestrator:
             gps_safety_state=status.gps_safety_state,
             terminal=terminal,
             reason=reason,
+            message=reason,
             status=status.as_dict(),
         )
 

@@ -537,6 +537,7 @@ class MissionRestartResponse(BaseModel):
 class PointMissionEvent(BaseModel):
     event_id: int = 0
     ts: str
+    timestamp: str = ""           # mobile alias for ts (set equal to ts on build)
     event_type: Literal[
         "point_leg_started",
         "point_arrived",
@@ -553,7 +554,8 @@ class PointMissionEvent(BaseModel):
     mission_id: str
     parent_mission_id: str
     point_mission_generation: int
-    point_index: Optional[int] = None
+    generation: int = 0           # mobile alias for point_mission_generation
+    point_index: int = 0          # always set (build falls back to current_point_index)
     source_index: Optional[int] = None
     point_mission_state: str
     mark: Optional[bool] = None
@@ -564,12 +566,16 @@ class PointMissionEvent(BaseModel):
     gps_safety_state: str
     terminal: bool
     reason: str
+    message: str = ""             # human-readable summary (mobile displays this)
+    lat: Optional[float] = None   # target point geodetic (optional; None when no anchor)
+    lon: Optional[float] = None
     status: dict
 
 
 class PointEventHistoryResponse(BaseModel):
     events: list[PointMissionEvent]
     latest_event_id: int
+    last_event_id: int = 0        # mobile alias for latest_event_id
     history_evicted: bool
     oldest_available_event_id: Optional[int] = None
 

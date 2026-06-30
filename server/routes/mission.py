@@ -265,6 +265,7 @@ async def point_mission_events(
     return PointEventHistoryResponse(
         events=payload["events"],
         latest_event_id=payload["latest_event_id"],
+        last_event_id=payload["latest_event_id"],
         history_evicted=payload["history_evicted"],
         oldest_available_event_id=payload["oldest_available_event_id"],
     )

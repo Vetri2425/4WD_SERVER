@@ -214,7 +214,7 @@ def _validate_joystick_config() -> None:
 
 # ── Bridge health watchdog (Phase 3) ──────────────────────────────────────────
 BRIDGE_HEALTH_POLL_S = 1.0          # how often BridgeHealthManager checks
-BRIDGE_STATE_STALE_MS = 2500.0      # /mavros/state older than this => link frozen
+BRIDGE_STATE_STALE_MS = 10000.0     # /mavros/state older than this => link frozen (PX4 HB 1 Hz; USB serial gaps up to 7s observed)
 BRIDGE_FROZEN_GRACE_S = 6.0         # sustained-frozen duration before recovery
 BRIDGE_RECOVERY_MAX = 3             # max auto-recoveries within the window
 BRIDGE_RECOVERY_WINDOW_S = 300.0    # backoff window (5 min)

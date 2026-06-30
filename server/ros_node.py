@@ -227,7 +227,7 @@ class RosBridgeNode(Node):
         self._global_pos_recv_time: float | None = None
         self._gps_fix_recv_time: float | None = None
         self._velocity_recv_time: float | None = None
-        self._MAVROS_STATE_TIMEOUT_S = 2.0  # MAVROS publishes /state ~10 Hz
+        self._MAVROS_STATE_TIMEOUT_S = 10.0  # PX4 HB at 1 Hz; observed gaps up to 7s on USB serial
 
         # Callback groups: subs mutually exclusive, services reentrant
         self._sub_group = MutuallyExclusiveCallbackGroup()
