@@ -10,7 +10,7 @@ set -euo pipefail
 FCU_DEVICE="/dev/serial/by-id/usb-CubePilot_CubeOrange+_0-if00"
 FCU_BAUD="921600"
 GCS_UDP_PORT="14550"
-JETSON_IP="192.168.1.102"
+JETSON_IP="192.168.1.101"
 # GCS link. Default = server mode: MAVROS binds :14550 and the GCS dials in.
 # mavros2's router only forwards FCU telemetry to a GCS AFTER that GCS has sent
 # a packet first, so proactive push (unicast remote OR broadcast) does NOT work
